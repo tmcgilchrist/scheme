@@ -17,6 +17,7 @@ library
                , parsec
                , text 
                , mtl
+               , transformers
 
   hs-source-dirs:
                   src
@@ -24,12 +25,12 @@ library
                   Haskell2010
 
   exposed-modules:
+                  Scheme
                   Scheme.Parser
                   Scheme.AST
 
 executable scheme
-  hs-source-dirs:      main
-  main-is:             scheme.hs
+  main-is:             main/scheme.hs
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
                      , scheme
