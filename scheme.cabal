@@ -28,6 +28,8 @@ library
                   Scheme
                   Scheme.Parser
                   Scheme.AST
+                  Scheme.Data
+                  Scheme.RTS
 
 executable scheme
   main-is:             main/scheme.hs
