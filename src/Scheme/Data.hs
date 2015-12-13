@@ -10,7 +10,7 @@ import           Control.Monad.Error
 
 import qualified Data.Text as T
 import           Scheme.AST (unwordsList, LispVal)
-import           Text.ParserCombinators.Parsec (ParseError(..))
+import           Text.ParserCombinators.Parsec (ParseError)
 
 instance Error LispError where
      noMsg = Default "An error has occurred"
