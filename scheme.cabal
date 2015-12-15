@@ -27,7 +27,6 @@ library
   exposed-modules:
                   Scheme
                   Scheme.Parser
-                  Scheme.AST
                   Scheme.Data
                   Scheme.RTS
 

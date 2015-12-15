@@ -11,28 +11,20 @@ module Scheme.RTS (
   , getVar
   , setVar
   , liftThrows
+  , primitiveBindings
   , nullEnv
   , ThrowsError
   , LispVal (..)
   ) where
 
 import           Control.Monad
-
 import           Control.Monad.Error
-
-import           Data.Either
 import           Data.IORef
-import           Data.Text (Text(..))
+import           Data.Text (Text)
 import qualified Data.Text as T
-import           Scheme.AST
 import           Scheme.Data
-import           Scheme.Parser
-import           System.IO
-import           Text.ParserCombinators.Parsec hiding (spaces)
 
 data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
-
-type Env = IORef [(Text, IORef LispVal)]
 
 type IOThrowsError = ErrorT LispError IO
 
@@ -83,12 +75,20 @@ bindVars envRef bindings = readIORef envRef >>= extendEnv bindings >>= newIORef
          ref <- newIORef value
          return (var, ref)
 
+makeFunc :: Monad m => Maybe Text -> Env -> [LispVal] -> [LispVal] -> m LispVal
+makeFunc vargs' env params' body' = return $ Func (map showVal params') vargs' body' env
 
+makeNormalFunc :: Env -> [LispVal] -> [LispVal] -> ErrorT LispError IO LispVal
+makeNormalFunc = makeFunc Nothing
+
+makeVarArgs :: LispVal -> Env -> [LispVal] -> [LispVal] -> ErrorT LispError IO LispVal
+makeVarArgs = makeFunc . Just . showVal
 
 eval :: Env -> LispVal -> IOThrowsError LispVal
 eval _ val@(String _) = return val
 eval _ val@(Number _) = return val
 eval _ val@(Bool _) = return val
+eval env (Atom id') = getVar env id'
 eval _ (List [Atom "quote", val]) = return val
 eval env (List [Atom "if", pred', conseq, alt]) =
      do result <- eval env pred'
@@ -96,12 +96,39 @@ eval env (List [Atom "if", pred', conseq, alt]) =
              Bool False -> eval env alt
              _  -> eval env conseq
 eval env (List [Atom "set!", Atom var, form]) = eval env form >>= setVar env var
-eval env (List (Atom func : args)) = mapM (eval env) args >>= liftThrows . apply func
+eval env (List [Atom "define", Atom var, form]) = eval env form >>= defineVar env var
+
+eval env (List (Atom "define" : List (Atom var : params') : body')) =
+  makeNormalFunc env params' body' >>= defineVar env var
+eval env (List (Atom "define" : DottedList (Atom var : params') vargs' : body')) =
+  makeVarArgs vargs' env params' body' >>= defineVar env var
+eval env (List (Atom "lambda" : List params' : body')) =
+     makeNormalFunc env params' body'
+eval env (List (Atom "lambda" : DottedList params' varargs : body')) =
+     makeVarArgs varargs env params' body'
+eval env (List (Atom "lambda" : varargs@(Atom _) : body')) =
+     makeVarArgs varargs env [] body'
+
+eval env (List (function : args)) = do
+  func <- eval env function
+  argVals <- mapM (eval env) args
+  apply func argVals
 eval _ badForm = throwError $ BadSpecialForm "Unrecognised special form" badForm
 
-apply :: T.Text -> [LispVal] -> ThrowsError LispVal
-apply func args = maybe (throwError $ NotFunction "Unrecognized primitive function args" (T.unpack func))
-                  ($ args) (lookup func primitives)
+apply :: LispVal -> [LispVal] -> IOThrowsError LispVal
+apply (PrimitiveFunc func )  args = liftThrows $ func args
+apply (Func params' vargs' body' closure') args =
+  if num params' /= num args && vargs' == Nothing
+  then throwError $ NumArgs (num params') args
+  else (liftIO $ bindVars closure' $ zip params' args) >>= bindVarArgs vargs' >>= evalBody
+  where
+    remainingArgs = drop (length params') args
+    num = toInteger . length
+    evalBody env = liftM last $ mapM (eval env) body'
+    bindVarArgs arg env = case arg of
+      Just argName -> liftIO $ bindVars env [(argName, List $ remainingArgs)]
+      Nothing -> return env
+
 
 primitives :: [(T.Text, [LispVal] -> ThrowsError LispVal)]
 primitives = [("+", numericBinop (+)),
@@ -130,6 +157,10 @@ primitives = [("+", numericBinop (+)),
               ("string>=?", strBoolBinop (>=)),
               ("quotient", numericBinop quot),
               ("remainder", numericBinop rem)]
+
+primitiveBindings :: IO Env
+primitiveBindings = nullEnv >>= (flip bindVars $ map makePrimitiveFunc primitives)
+  where makePrimitiveFunc (var, func) = (var, PrimitiveFunc func)
 
 car :: [LispVal] -> ThrowsError LispVal
 car [List (x : _xs)]         = return x
@@ -184,7 +215,7 @@ boolBoolBinop = boolBinop unpackBool
 numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> ThrowsError LispVal
 numericBinop _op           []  = throwError $ NumArgs 2 []
 numericBinop _op singleVal@[_] = throwError $ NumArgs 2 singleVal
-numericBinop op params        = mapM unpackNum params >>= return . Number . foldl1 op
+numericBinop op params'        = mapM unpackNum params' >>= return . Number . foldl1 op
 
 unpackStr :: LispVal -> ThrowsError Text
 unpackStr (String s) = return $ s

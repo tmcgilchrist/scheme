@@ -10,7 +10,6 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Data.Text (Text)
 import qualified Data.Text as T
-import           Scheme.AST as X
 import           Scheme.Data as X
 import           Scheme.Parser as X
 import           Scheme.RTS as X
@@ -37,7 +36,7 @@ until_ pred' prompt action = do
     else action result >> until_ pred' prompt action
 
 runOne :: Text -> IO ()
-runOne expr = nullEnv >>= flip evalAndPrint expr
+runOne expr = primitiveBindings >>= flip evalAndPrint expr
 
 runRepl :: IO ()
-runRepl = nullEnv >>= until_ (== "quit") (readPrompt "λ >>> ") . evalAndPrint
+runRepl = primitiveBindings >>= until_ (== "quit") (readPrompt "λ >>> ") . evalAndPrint

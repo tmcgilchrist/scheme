@@ -10,9 +10,7 @@ module Scheme.Parser (
   ) where
 
 import           Control.Monad.Except
-import           Data.Monoid
 import qualified Data.Text as T
-import           Scheme.AST
 import           Scheme.Data
 import           Text.ParserCombinators.Parsec hiding (spaces)
 
