@@ -1,4 +1,4 @@
-Code from https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours/Parsing
+Code from [Write Yourself a Scheme in 48 Hours](https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours/Parsing).
 
 ## TODO
 - use stack for easier repl interaction
