@@ -2,6 +2,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Scheme.Parser (
     readExpr
+  , readExprList
   , parseExpr
   , parseString
   , parseAtom
@@ -10,16 +11,23 @@ module Scheme.Parser (
   ) where
 
 import           Control.Monad.Except
+import           Data.Text (Text)
 import qualified Data.Text as T
 import           Scheme.Data
 import           Text.ParserCombinators.Parsec hiding (spaces)
 
 data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
 
-readExpr :: T.Text -> ThrowsError LispVal
-readExpr input = case (parse parseExpr "lisp" (T.unpack input)) of
-  Left err  -> throwError $ Parser err
+readOrThrow :: Parser a -> Text -> ThrowsError a
+readOrThrow parser input = case parse parser "lisp" (T.unpack input) of
+  Left err ->  throwError $ Parser err
   Right val -> return val
+
+readExpr :: T.Text -> ThrowsError LispVal
+readExpr = readOrThrow parseExpr
+
+readExprList :: T.Text -> ThrowsError [LispVal]
+readExprList = readOrThrow (endBy parseExpr spaces)
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"

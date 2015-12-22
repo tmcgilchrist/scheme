@@ -8,6 +8,7 @@ module Scheme.RTS (
   , trapError
   , runIOThrows
   , isBound
+  , bindVars
   , getVar
   , setVar
   , liftThrows
@@ -20,13 +21,13 @@ module Scheme.RTS (
 import           Control.Monad
 import           Control.Monad.Error
 import           Data.IORef
-import           Data.Text (Text)
+import           Data.Text (Text(..))
 import qualified Data.Text as T
 import           Scheme.Data
+import           Scheme.Parser (readExpr, readExprList)
+import           System.IO
 
 data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
-
-type IOThrowsError = ErrorT LispError IO
 
 nullEnv :: IO Env
 nullEnv = newIORef []
@@ -95,6 +96,8 @@ eval env (List [Atom "if", pred', conseq, alt]) =
         case result of
              Bool False -> eval env alt
              _  -> eval env conseq
+eval env (List [Atom "load", String filename]) =
+  load filename >>= liftM last . mapM (eval env)
 eval env (List [Atom "set!", Atom var, form]) = eval env form >>= setVar env var
 eval env (List [Atom "define", Atom var, form]) = eval env form >>= defineVar env var
 
@@ -117,6 +120,7 @@ eval _ badForm = throwError $ BadSpecialForm "Unrecognised special form" badForm
 
 apply :: LispVal -> [LispVal] -> IOThrowsError LispVal
 apply (PrimitiveFunc func )  args = liftThrows $ func args
+apply (IOFunc func) args = func args
 apply (Func params' vargs' body' closure') args =
   if num params' /= num args && vargs' == Nothing
   then throwError $ NumArgs (num params') args
@@ -129,6 +133,16 @@ apply (Func params' vargs' body' closure') args =
       Just argName -> liftIO $ bindVars env [(argName, List $ remainingArgs)]
       Nothing -> return env
 
+ioPrimitives :: [(T.Text, [LispVal] -> IOThrowsError LispVal)]
+ioPrimitives = [("apply", applyProc),
+                ("open-input-file", makePort ReadMode),
+                ("open-output-file", makePort WriteMode),
+                ("close-input-port", closePort),
+                ("close-output-port", closePort),
+                ("read", readProc),
+                ("write", writeProc),
+                ("read-contents", readContents),
+                ("read-all", readAll)]
 
 primitives :: [(T.Text, [LispVal] -> ThrowsError LispVal)]
 primitives = [("+", numericBinop (+)),
@@ -159,8 +173,39 @@ primitives = [("+", numericBinop (+)),
               ("remainder", numericBinop rem)]
 
 primitiveBindings :: IO Env
-primitiveBindings = nullEnv >>= (flip bindVars $ map makePrimitiveFunc primitives)
-  where makePrimitiveFunc (var, func) = (var, PrimitiveFunc func)
+primitiveBindings = nullEnv >>= (flip bindVars $ map (makeFunc' IOFunc) ioPrimitives
+                                ++ map (makeFunc' PrimitiveFunc) primitives)
+  where makeFunc' constructor (var, func) = (var, constructor func)
+
+applyProc :: [LispVal] -> IOThrowsError LispVal
+applyProc [func, List args] = apply func args
+applyProc (func : args) = apply func args
+
+makePort :: IOMode -> [LispVal] -> IOThrowsError LispVal
+makePort mode [String filename] = liftM Port $ liftIO $ openFile (T.unpack filename) mode
+
+closePort :: [LispVal] -> IOThrowsError LispVal
+closePort [Port port] = liftIO $ hClose port >> (return $ Bool True)
+closePort _ = return $ Bool False
+
+readProc :: [LispVal] -> IOThrowsError LispVal
+readProc [] = readProc [Port stdin]
+readProc [Port port] = (liftIO $ T.pack <$> hGetLine port) >>= liftThrows . readExpr
+
+writeProc :: [LispVal] -> IOThrowsError LispVal
+writeProc [obj] = writeProc [obj, Port stdout]
+writeProc [obj, Port port] = liftIO $ hPrint port obj >> (return $ Bool True)
+
+readContents :: [LispVal] -> IOThrowsError LispVal
+readContents [String filename] = do
+  let c = liftIO $ readFile . T.unpack $ filename
+  liftM String $ T.pack <$> c
+
+load :: Text -> IOThrowsError [LispVal]
+load filename = (liftIO $ readFile . T.unpack $ filename) >>= liftThrows . readExprList . T.pack
+
+readAll :: [LispVal] -> IOThrowsError LispVal
+readAll [String filename] = liftM List $ load filename
 
 car :: [LispVal] -> ThrowsError LispVal
 car [List (x : _xs)]         = return x

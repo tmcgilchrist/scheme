@@ -5,6 +5,7 @@ module Scheme.Data (
   , LispVal (..)
   , LispError (..)
   , Env
+  , IOThrowsError
   , showVal
   ) where
 
@@ -15,6 +16,9 @@ import           Data.IORef
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Text.ParserCombinators.Parsec (ParseError)
+import           System.IO
+
+type IOThrowsError = ErrorT LispError IO
 
 instance Error LispError where
      noMsg = Default "An error has occurred"
@@ -55,6 +59,8 @@ data LispVal =
   | PrimitiveFunc ([LispVal] -> ThrowsError LispVal)
   | Func { params :: [Text], vargs :: (Maybe Text),
           body :: [LispVal], closure :: Env }
+  | IOFunc ([LispVal] -> IOThrowsError LispVal)
+  | Port Handle
 
 instance Show LispVal where show = T.unpack . showVal
 
@@ -67,6 +73,8 @@ showVal (Bool False) = "#false"
 showVal (List contents) = T.unwords ["(", unwordsList contents, ")"]
 showVal (DottedList h t) = T.unwords ["(", unwordsList h, " . ", showVal t, ")"]
 showVal (PrimitiveFunc _) = "<primitive>"
+showVal (Port _) = "<IO port>"
+showVal (IOFunc _) = "<IO primitive>"
 showVal (Func {params = args, vargs = varargs, body = _body, closure = _env}) =
   T.pack $ "(lambda (" ++ unwords (map show args) ++
       (case varargs of
