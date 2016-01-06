@@ -26,3 +26,5 @@ Change parseNumber to support the Scheme standard for different bases. You may f
 - equal? has a bug in that a list of values is compared using eqv? instead of equal?. For example, (equal? '(1 "2") '(1 2)) = #f, while you'd expect it to be #t. Change equal? so that it continues to ignore types as it recurs into list structures. You can either do this explicitly, following the example in eqv?, or factor the list clause into a separate helper function that is parameterized by the equality testing function.
 - Implement the cond and case expressions.
 - Add the rest of the string functions. You don't yet know enough to do string-set!; this is difficult to implement in Haskell, but you'll have enough information after the next two sections
+
+- implement Hygenic macros. Intersperse a function between readExpr and eval that takes a form and a macro environment, looks for transformer keywords, and then transforms them according to the rules of the pattern language, rewriting variables as necessarily.
