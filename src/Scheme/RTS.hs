@@ -4,7 +4,6 @@
 module Scheme.RTS (
     Env
   , eval
-  , extractValue
   , trapError
   , runIOThrows
   , isBound
@@ -21,7 +20,7 @@ module Scheme.RTS (
 import           Control.Monad
 import           Control.Monad.Error
 import           Data.IORef
-import           Data.Text (Text(..))
+import           Data.Text (Text)
 import qualified Data.Text as T
 import           Scheme.Data
 import           Scheme.Parser (readExpr, readExprList)
@@ -39,6 +38,9 @@ liftThrows (Right val) = return val
 
 runIOThrows :: IOThrowsError Text -> IO Text
 runIOThrows action = runErrorT (trapError action) >>= return . extractValue
+  where
+    extractValue (Right val) = val
+    extractValue (Left _) = "error"
 
 isBound :: Env -> Text -> IO Bool
 isBound envRef var = readIORef envRef >>= return . maybe False (pure True) . lookup var
@@ -132,6 +134,7 @@ apply (Func params' vargs' body' closure') args =
     bindVarArgs arg env = case arg of
       Just argName -> liftIO $ bindVars env [(argName, List $ remainingArgs)]
       Nothing -> return env
+apply a _ = throwError $ NotFunction "Not a function" (show a)
 
 ioPrimitives :: [(T.Text, [LispVal] -> IOThrowsError LispVal)]
 ioPrimitives = [("apply", applyProc),
@@ -180,9 +183,12 @@ primitiveBindings = nullEnv >>= (flip bindVars $ map (makeFunc' IOFunc) ioPrimit
 applyProc :: [LispVal] -> IOThrowsError LispVal
 applyProc [func, List args] = apply func args
 applyProc (func : args) = apply func args
+applyProc [] = pure $ List []
 
 makePort :: IOMode -> [LispVal] -> IOThrowsError LispVal
 makePort mode [String filename] = liftM Port $ liftIO $ openFile (T.unpack filename) mode
+makePort _ (a:_) = throwError $ TypeMismatch "Must pass string filename to makePort" a
+makePort _ [] = throwError $ TypeMismatch "Must pass filename to makePort" (List [])
 
 closePort :: [LispVal] -> IOThrowsError LispVal
 closePort [Port port] = liftIO $ hClose port >> (return $ Bool True)
@@ -191,21 +197,26 @@ closePort _ = return $ Bool False
 readProc :: [LispVal] -> IOThrowsError LispVal
 readProc [] = readProc [Port stdin]
 readProc [Port port] = (liftIO $ T.pack <$> hGetLine port) >>= liftThrows . readExpr
+readProc (a:_) = throwError $ TypeMismatch "ReadProc expects a Port or []" a
 
 writeProc :: [LispVal] -> IOThrowsError LispVal
 writeProc [obj] = writeProc [obj, Port stdout]
 writeProc [obj, Port port] = liftIO $ hPrint port obj >> (return $ Bool True)
+writeProc (a:_) = throwError $ TypeMismatch "WriteProc unexpected type" a
+writeProc [] = throwError $ TypeMismatch "WriteProc unexpected type" (List [])
 
 readContents :: [LispVal] -> IOThrowsError LispVal
 readContents [String filename] = do
   let c = liftIO $ readFile . T.unpack $ filename
   liftM String $ T.pack <$> c
+readContents a = throwError $ NumArgs 1 a
 
 load :: Text -> IOThrowsError [LispVal]
 load filename = (liftIO $ readFile . T.unpack $ filename) >>= liftThrows . readExprList . T.pack
 
 readAll :: [LispVal] -> IOThrowsError LispVal
 readAll [String filename] = liftM List $ load filename
+readAll a = throwError $ NumArgs 1 a
 
 car :: [LispVal] -> ThrowsError LispVal
 car [List (x : _xs)]         = return x
@@ -238,6 +249,8 @@ eqv [(List arg1), (List arg2)]             = return $ Bool $ (length arg1 == len
   where eqvPair (x1, x2) = case eqv [x1, x2] of
                                 Left _err -> False
                                 Right (Bool val) -> val
+                                Right _ -> False
+
 eqv [_, _]                                 = return $ Bool False
 eqv badArgList                             = throwError $ NumArgs 2 badArgList
 
@@ -298,6 +311,3 @@ equal badArgList = throwError $ NumArgs 2 badArgList
 
 trapError :: (Show a, MonadError a m) => m Text -> m Text
 trapError action = catchError action (return . T.pack . show)
-
-extractValue :: ThrowsError a -> a
-extractValue (Right val) = val

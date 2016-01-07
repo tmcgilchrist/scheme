@@ -7,14 +7,12 @@ module Scheme (
   ) where
 
 import           Control.Monad
-import           Control.Monad.Except
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Scheme.Data as X
 import           Scheme.Parser as X
 import           Scheme.RTS as X
 import           System.IO
-import           Text.ParserCombinators.Parsec hiding (spaces)
 
 flushStr :: Text -> IO ()
 flushStr str = (putStr . T.unpack $ str) >> hFlush stdout

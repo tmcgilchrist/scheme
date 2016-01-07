@@ -1,7 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import           Control.Monad.Except
-import           Control.Monad.Trans
 import qualified Data.Text as T
 import           Scheme
 import           System.Environment

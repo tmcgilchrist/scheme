@@ -19,6 +19,9 @@ library
                , mtl
                , transformers
 
+  ghc-options:
+                  -Wall
+
   hs-source-dirs:
                   src
   default-language:

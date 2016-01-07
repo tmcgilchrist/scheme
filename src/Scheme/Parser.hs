@@ -16,7 +16,7 @@ import qualified Data.Text as T
 import           Scheme.Data
 import           Text.ParserCombinators.Parsec hiding (spaces)
 
-data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
+--data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
 
 readOrThrow :: Parser a -> Text -> ThrowsError a
 readOrThrow parser input = case parse parser "lisp" (T.unpack input) of
